@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "regions": ["lhr1", "syd1", "hnd1", "pdx1"],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "installCommand": "npm install",
+  "buildCommand": "npx prisma generate && next build"
+}
