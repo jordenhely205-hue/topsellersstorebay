@@ -1,0 +1,182 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  SUPER_ADMIN
+  VENDOR
+  CUSTOMER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(CUSTOMER)
+  
+  vendorProfile VendorProfile?
+  products      Product[]
+  orders        Order[]
+  notifications Notification[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VendorProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeName      String
+  logoUrl        String?
+  documentUrl    String?  // Added for ID/Tax Document Verification
+  commissionRate Float    @default(10.0) // Percentage admin takes
+  walletBalance  Float    @default(0.0)
+  isApproved     Boolean  @default(false)
+  rejectionReason String? // If admin rejects the document
+  
+  stripeConnectId   String?  @unique
+  isStripeConnected Boolean @default(false)
+  
+  transactions   WalletTransaction[]
+  payoutRequests PayoutRequest[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  icon        String?   // URL to 3D Glassmorphism Icon
+  attributes  Json?     // Defines fields needed: [{name: 'Size', type: 'select', options: ['M', 'L']}, {name: 'RAM', type: 'text'}]
+  
+  products    Product[]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  vendorId          String
+  vendor            User     @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  categoryId        String
+  category          Category @relation(fields: [categoryId], references: [id])
+  name              String
+  description       String
+  price             Float
+  stock             Int      @default(0)
+  images            String[]
+  
+  dynamicAttributes Json?    // Stores actual values: {Size: 'M', RAM: '16GB'}
+  variants          Json?    // E.g., [{color: 'red', size: 'M', stock: 10}]
+  
+  orderItems        OrderItem[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model PayoutRequest {
+  id              String   @id @default(cuid())
+  vendorProfileId String
+  vendorProfile   VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  amount          Float
+  currency        String   @default("USD") // USD or GBP
+  method          String   // STRIPE, PAYPAL
+  details         Json     // Stores Stripe Account ID or PayPal Email
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  customerId      String
+  customer        User     @relation(fields: [customerId], references: [id])
+  totalAmount     Float
+  currency        String   @default("USD") // USD or GBP
+  paymentMethod   String   @default("STRIPE") // STRIPE, PAYPAL
+  stripePaymentId String?  @unique
+  status          String   @default("PENDING") // PENDING, PAID, SHIPPED, DELIVERED
+  
+  items           OrderItem[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product @relation(fields: [productId], references: [id])
+  vendorId     String  // To easily fetch orders per vendor for split shipping
+  quantity     Int
+  price        Float
+  vendorStatus String  @default("PROCESSING") // PROCESSING, SHIPPED, DELIVERED
+  isSettled    Boolean @default(false) // Ensures commission is only cut once
+}
+
+model WalletTransaction {
+  id              String   @id @default(cuid())
+  vendorProfileId String
+  vendorProfile   VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  amount          Float
+  type            String   // EARNING, WITHDRAWAL, REFUND
+  description     String
+  orderId         String?  // Optional reference to order
+  
+  createdAt       DateTime @default(now())
+}
+
+model ProfitLedger {
+  id              String   @id @default(cuid())
+  orderItemId     String   @unique
+  vendorId        String
+  grossAmount     Float
+  commissionRate  Float
+  netCommission   Float    // Admin's profit
+  
+  createdAt       DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // ORDER, WALLET, SYSTEM, PAYOUT
+  isRead    Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+}
+
+model PaymentSettings {
+  id                  String   @id @default("global")
+  stripePublicKey     String?
+  stripeSecretKey     String?
+  stripeWebhookSecret String?
+  paypalClientId      String?
+  paypalSecretKey      String?
+  isLiveMode          Boolean  @default(false)
+  
+  updatedAt           DateTime @updatedAt
+}
